@@ -21,7 +21,7 @@ FOLDERS = [
     "model_checkpoints",
     "training_summary/metrics",
     "training_summary/plots",
-    "training_summary/runs",
+    "training_summary/notes",
     "scripts",
 ]
 
@@ -69,6 +69,30 @@ training_summary/**/*
 !training_summary/**/.gitkeep
 """
 
+NOTE_TMPL = """\
+# {title}
+
+Created: {created}
+
+## Hypothesis
+- 
+
+## Change
+- 
+
+## Result
+- Metrics:
+- Qualitative:
+
+## Next
+- 
+
+## Links
+- checkpoints:
+- plots:
+- logs:
+"""
+
 def run(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=True)
 
@@ -82,7 +106,6 @@ def venv_paths(project_dir: Path) -> tuple[Path, Path]:
         py = venv_dir / "bin" / "python"
         pip = venv_dir / "bin" / "pip"
     return py, pip
-
 
 def write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -146,7 +169,21 @@ def project_to_pkg_name(project_name: str) -> str:
 def slugify(s: str) -> str:
     s = s.strip().lower()
     s = re.sub(r"[^a-z0-9]+", "-", s)
-    return s.strip("-") or "notebook"
+    s = s.strip("-")
+    return s or "note"
+
+def find_project_root(start: Path) -> Path:
+    cur = start.resolve()
+    for parent in [cur, *cur.parents]:
+        if (parent / "src").is_dir():
+            return parent
+    return cur
+
+def write_note_md(path: Path, title: str, project: str) -> None:
+    created = datetime.now().strftime("%Y-%m-%d %H:%M")
+    content = NOTE_TMPL.format(title=title, created=created, project=project)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
 
 def write_ipynb(path: Path, title: str, pkg_name: str) -> None:
     created = datetime.now().strftime("%Y-%m-%d")
@@ -254,7 +291,7 @@ def notebook_main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--name",
         default=None,
-        help="Notebook filename (without .ipynb). Default is <date>_<slugified-title>.",
+        help="Notebook filename (without .ipynb). Default is <slugified-title>.",
     )
     args = parser.parse_args(argv)
 
@@ -278,6 +315,42 @@ def notebook_main(argv: list[str] | None = None) -> int:
     out_path = out_dir / fname
 
     write_ipynb(out_path, title, pkg_name)
+    print(f"Created: {out_path}")
+    return 0
+
+def note_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="dlnote",
+        description="Create a templated experiment note markdown file (LLM-readable ground truth).",
+    )
+    parser.add_argument("--title", default=None, help="Note title. If omitted, you will be prompted.")
+    parser.add_argument("--dir", default=".", help="Directory to create the note from (default: current directory).")
+    parser.add_argument("--name", default=None, help="Filename (without .md). Default: slugified title.")
+    args = parser.parse_args(argv)
+
+    title = (args.title or input("Note title: ").strip())
+    if not title:
+        print("Error: title is required.", file=sys.stderr)
+        return 2
+
+    target_dir = Path(args.dir).expanduser().resolve()
+    project_root = find_project_root(target_dir)
+
+    # Prefer <project_root>/training_summary/notes if present; else use target_dir
+    preferred = project_root / "training_summary" / "notes"
+    out_dir = preferred if preferred.exists() else target_dir
+
+    slug = slugify(title) or "note"
+    base = args.name or slug
+    out_path = out_dir / f"{base}.md"
+
+    # Avoid overwrite by suffixing
+    i = 2
+    while out_path.exists():
+        out_path = out_dir / f"{base}_{i}.md"
+        i += 1
+
+    write_note_md(out_path, title=title, project=project_root.name)
     print(f"Created: {out_path}")
     return 0
 

@@ -28,7 +28,7 @@ python -m pip install -e .
 ```
 
 ## Usage
-### Project Template
+### Project Template (`dlinit`)
 #### Create a new project (in the current folder)
 ```bash
 cd /path/where/you/store/projects
@@ -59,13 +59,13 @@ dlinit <project_name> --no-install
   model_checkpoints
   training_summary/metrics
   training_summary/plots
-  training_summary/runs
+  training_summary/notes
   scripts
   .venv/            (after init)
   requirements.lock (after install)
 ```
 
-### Notebook Template
+### Notebook Template (`dlnb`)
 #### Create a new notebook (in the current folder):
 ```bash
 cd /path/to/<project_name>/notebooks
@@ -79,10 +79,42 @@ dlnb --dir /path/to/<project_name>/notebooks
 
 You will be prompted to provide a title, can otherwise provide title non-interactively:
 ``` bash
-dlnb --title "Notebook Title"
+dlnb --title "Exploratory Data Analysis"
 ```
 
-The notebook can be created anywhere, not just in project folders created by this CLI.
+### Experiment Note Template (`dlnote`)
+Creates a simple markdown note intended as quick “ground truth” for an LLM to read and generate richer summaries.
+
+#### Create a new note (recommended location)
+```bash
+cd /path/to/notes
+dlnote
+```
+
+By default, if ```training_summary/notes``` exists, the note will be created there.
+
+#### Create a new note (somewhere else)
+```bash
+dlnote --dir /path/to/<project_name>
+```
+
+You will be prompted to provide a title, can otherwise provide title non-interactively:
+``` bash
+dlnote --title "Used a different model"
+```
+
+Optionally set the output filename (without ```.md```):
+```bash
+dlnote --name "new_model_try1"
+```
+
+#### Typical Note Structure
+The generated note contains:
+- Hypothesis
+- Change
+- Result (metrics + qualitative)
+- Next
+- Links (checkpoints/plots/logs)
 
 ## License
 MIT (see ```LICENSE```)
