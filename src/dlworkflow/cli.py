@@ -32,8 +32,10 @@ REQUIREMENTS = [
     "torch",
     "transformers",
     "matplotlib",
+    "seaborn",
     "tqdm",
     "nltk",
+    "ipykernel",
 ]
 
 GITIGNORE = """\
