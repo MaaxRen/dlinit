@@ -206,6 +206,18 @@ def write_ipynb(path: Path, title: str, pkg_name: str) -> None:
                     "- What recommendation/insights can you give?"
                 ],
             },
+            {   
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "# auto-reload all modules every time a cell executes\n",
+                    "# mainly for my own functions from utils.py\n",
+                    "%load_ext autoreload\n",
+                    "%autoreload 2\n",
+                ],
+            },
             {
                 "cell_type": "code",
                 "execution_count": None,
@@ -217,11 +229,6 @@ def write_ipynb(path: Path, title: str, pkg_name: str) -> None:
                     "import numpy as np\n",
                     "import pandas as pd\n",
                     "import matplotlib.pyplot as plt\n",
-                    "\n",
-                    "# Allow imports from ./src (src-layout)\n",
-                    "import sys\n",
-                    "from pathlib import Path\n",
-                    "sys.path.insert(0, str(Path.cwd().parent / 'src'))\n",
                 ],
             },
         ],
