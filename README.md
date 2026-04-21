@@ -53,9 +53,9 @@ dlinit <project_name> --no-install
 The starter dependency set depends on the active profile:
 
 - `ML`: `numpy`, `pandas`, `scikit-learn`, `matplotlib`, `seaborn`, `tqdm`, `jupyter`, `ipykernel`
-- `NLP`: `numpy`, `pandas`, `scikit-learn`, `torch`, `transformers`, `datasets`, `tokenizers`, `nltk`, `matplotlib`, `seaborn`, `tqdm`, `jupyter`, `ipykernel`
-- `CV`: `numpy`, `pandas`, `scikit-learn`, `torch`, `torchvision`, `opencv-python`, `pillow`, `albumentations`, `matplotlib`, `seaborn`, `tqdm`, `jupyter`, `ipykernel`
-- `STAT`: `numpy`, `pandas`, `scikit-learn`, `scipy`, `statsmodels`, `matplotlib`, `seaborn`, `jupyter`, `ipykernel`
+- `NLP`: `ML` plus `torch`, `transformers`, `datasets`, `tokenizers`, `nltk`
+- `CV`: `ML` plus `torch`, `torchvision`, `opencv-python`, `pillow`, `albumentations`
+- `STAT`: `ML` plus `scipy`, `statsmodels`
 
 #### Typical layout
 ```bash
