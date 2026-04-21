@@ -13,6 +13,7 @@ license = { text = "MIT" }
 
 [project.scripts]
 dlinit = "dlworkflow.cli:main"
+dlsetup = "dlworkflow.cli:setup_main"
 dlnb = "dlworkflow.cli:notebook_main"
 dlnote = "dlworkflow.cli:note_main"
 

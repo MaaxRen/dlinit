@@ -4,10 +4,21 @@ import argparse
 import platform
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 import re
 import json
-from datetime import datetime
+from typing import Callable
+
+from .config import (
+    ALLOWED_PROFILES,
+    clear_config_keys,
+    load_config,
+    normalize_profile,
+    now_in_timezone,
+    timezone_name,
+    update_config,
+)
 
 FOLDERS = [
     "data/raw",
@@ -19,24 +30,65 @@ FOLDERS = [
     "notebooks",
     "src",
     "model_checkpoints",
-    "training_summary/metrics",
+    "training_summary/runs",
     "training_summary/plots",
     "training_summary/notes",
     "scripts",
 ]
 
-REQUIREMENTS = [
-    "numpy",
-    "pandas",
-    "scikit-learn",
-    "torch",
-    "transformers",
-    "matplotlib",
-    "seaborn",
-    "tqdm",
-    "nltk",
-    "ipykernel",
-]
+PROFILE_REQUIREMENTS = {
+    "ML": [
+        "numpy",
+        "pandas",
+        "scikit-learn",
+        "matplotlib",
+        "seaborn",
+        "tqdm",
+        "jupyter",
+        "ipykernel",
+    ],
+    "NLP": [
+        "numpy",
+        "pandas",
+        "scikit-learn",
+        "torch",
+        "transformers",
+        "datasets",
+        "tokenizers",
+        "nltk",
+        "matplotlib",
+        "seaborn",
+        "tqdm",
+        "jupyter",
+        "ipykernel",
+    ],
+    "CV": [
+        "numpy",
+        "pandas",
+        "scikit-learn",
+        "torch",
+        "torchvision",
+        "opencv-python",
+        "pillow",
+        "albumentations",
+        "matplotlib",
+        "seaborn",
+        "tqdm",
+        "jupyter",
+        "ipykernel",
+    ],
+    "STAT": [
+        "numpy",
+        "pandas",
+        "scikit-learn",
+        "scipy",
+        "statsmodels",
+        "matplotlib",
+        "seaborn",
+        "jupyter",
+        "ipykernel",
+    ],
+}
 
 GITIGNORE = """\
 # Python
@@ -95,6 +147,40 @@ Created: {created}
 - logs:
 """
 
+
+@dataclass(frozen=True)
+class SettingSpec:
+    key: str
+    help_text: str
+    prompt_text: str
+    normalizer: Callable[[str], str]
+
+
+def normalize_timezone(value: str) -> str:
+    cleaned = value.strip()
+    timezone_name(cleaned)
+    return cleaned
+
+
+SETTINGS_SPECS: tuple[SettingSpec, ...] = (
+    SettingSpec(
+        key="timezone",
+        help_text="IANA time zone name to use across the CLI, for example Australia/Adelaide.",
+        prompt_text="Time zone (for example Australia/Adelaide): ",
+        normalizer=normalize_timezone,
+    ),
+    SettingSpec(
+        key="default_profile",
+        help_text=(
+            "Default project profile to remember for future commands. "
+            f"Options: {', '.join(ALLOWED_PROFILES)}."
+        ),
+        prompt_text=f"Default profile ({', '.join(ALLOWED_PROFILES)}): ",
+        normalizer=normalize_profile,
+    ),
+)
+SETTINGS_BY_KEY = {spec.key: spec for spec in SETTINGS_SPECS}
+
 def run(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=True)
 
@@ -141,13 +227,27 @@ def create_venv(project_dir: Path, python: str) -> None:
     run([python, "-m", "venv", str(project_dir / ".venv")])
 
 
-def install_deps(project_dir: Path) -> None:
+def default_profile() -> str:
+    config = load_config()
+    stored = config.get("default_profile")
+    if stored is None:
+        return "ML"
+    return normalize_profile(str(stored))
+
+
+def requirements_for_profile(profile: str) -> list[str]:
+    normalized = normalize_profile(profile)
+    return PROFILE_REQUIREMENTS[normalized]
+
+
+def install_deps(project_dir: Path, profile: str) -> None:
     py, _ = venv_paths(project_dir)
     if not py.exists():
         raise FileNotFoundError("Venv python not found. Did venv creation fail?")
 
+    requirements = requirements_for_profile(profile)
     run([str(py), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
-    run([str(py), "-m", "pip", "install", *REQUIREMENTS])
+    run([str(py), "-m", "pip", "install", *requirements])
 
     lock_path = project_dir / "requirements.lock"
     frozen = subprocess.check_output([str(py), "-m", "pip", "freeze"], text=True)
@@ -182,13 +282,13 @@ def find_project_root(start: Path) -> Path:
     return cur
 
 def write_note_md(path: Path, title: str, project: str) -> None:
-    created = datetime.now().strftime("%Y-%m-%d %H:%M")
+    created = now_in_timezone().strftime("%Y-%m-%d %H:%M")
     content = NOTE_TMPL.format(title=title, created=created, project=project)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
 def write_ipynb(path: Path, title: str, pkg_name: str) -> None:
-    created = datetime.now().strftime("%Y-%m-%d")
+    created = now_in_timezone().strftime("%Y-%m-%d")
     nb = {
         "cells": [
             {
@@ -206,18 +306,6 @@ def write_ipynb(path: Path, title: str, pkg_name: str) -> None:
                     "- What recommendation/insights can you give?"
                 ],
             },
-            {   
-                "cell_type": "code",
-                "execution_count": None,
-                "metadata": {},
-                "outputs": [],
-                "source": [
-                    "# auto-reload all modules every time a cell executes\n",
-                    "# mainly for my own functions from utils.py\n",
-                    "%load_ext autoreload\n",
-                    "%autoreload 2\n",
-                ],
-            },
             {
                 "cell_type": "code",
                 "execution_count": None,
@@ -229,6 +317,18 @@ def write_ipynb(path: Path, title: str, pkg_name: str) -> None:
                     "import numpy as np\n",
                     "import pandas as pd\n",
                     "import matplotlib.pyplot as plt\n",
+                ],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "# auto-reload all modules every time a cell executes\n",
+                    "# mainly for my own functions from utils.py\n",
+                    "%load_ext autoreload\n",
+                    "%autoreload 2\n",
                 ],
             },
         ],
@@ -258,6 +358,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--no-install", action="store_true", help="Skip installing dependencies.")
     args = parser.parse_args(argv)
+    profile = default_profile()
 
     parent = Path(args.path).expanduser().resolve()
     project_dir = (parent / args.project_name).resolve()
@@ -277,10 +378,11 @@ def main(argv: list[str] | None = None) -> int:
         create_venv(project_dir, args.python)
 
     if not args.no_install:
-        install_deps(project_dir)
+        install_deps(project_dir, profile)
 
     py, _ = venv_paths(project_dir)
     print(f"Initialized: {project_dir}")
+    print(f"Profile: {profile}")
     print(f"Activate (mac/linux): source {project_dir}/.venv/bin/activate")
     print(f"Activate (windows):   {project_dir}\\.venv\\Scripts\\activate")
     print(f"Python: {py}")
@@ -325,6 +427,72 @@ def notebook_main(argv: list[str] | None = None) -> int:
 
     write_ipynb(out_path, title, pkg_name)
     print(f"Created: {out_path}")
+    return 0
+
+def setup_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="dlsetup",
+        description="Set general dlworkflow preferences that should be remembered across commands.",
+    )
+    for spec in SETTINGS_SPECS:
+        parser.add_argument(f"--{spec.key}", default=None, help=spec.help_text)
+    parser.add_argument(
+        "--show",
+        action="store_true",
+        help="Show the currently saved configuration.",
+    )
+    parser.add_argument(
+        "--clear",
+        action="append",
+        choices=sorted(SETTINGS_BY_KEY),
+        help="Clear a saved setting. Can be passed multiple times.",
+    )
+    args = parser.parse_args(argv)
+
+    requested_updates = {
+        spec.key: getattr(args, spec.key)
+        for spec in SETTINGS_SPECS
+        if getattr(args, spec.key) is not None
+    }
+
+    if args.show and not requested_updates and not args.clear:
+        config = load_config()
+        if not config:
+            print("No saved configuration.")
+            return 0
+        print(json.dumps(config, indent=2))
+        return 0
+
+    if not requested_updates and not args.clear and not args.show and len(SETTINGS_SPECS) == 1:
+        spec = SETTINGS_SPECS[0]
+        entered = input(spec.prompt_text).strip()
+        if entered:
+            requested_updates[spec.key] = entered
+
+    normalized_updates: dict[str, str] = {}
+    for key, raw_value in requested_updates.items():
+        spec = SETTINGS_BY_KEY[key]
+        normalized_updates[key] = spec.normalizer(raw_value)
+
+    changed = False
+    current_config = load_config()
+
+    if args.clear:
+        current_config, path = clear_config_keys(*args.clear)
+        changed = True
+    else:
+        path = None
+
+    if normalized_updates:
+        current_config, path = update_config(**normalized_updates)
+        changed = True
+
+    if not changed:
+        print("Nothing to update.")
+        return 0
+
+    print(f"Saved configuration: {path}")
+    print(json.dumps(current_config, indent=2))
     return 0
 
 def note_main(argv: list[str] | None = None) -> int:
